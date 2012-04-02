@@ -321,21 +321,8 @@ class ID3v2 < DelegateClass(Hash)
     puts("decode_tag(#{name.inspect}, #{raw_value.inspect})") if $DEBUG
     if name =~ /^(T|COM)/
       if name =~ /^COM/
-        #FIXME improve this
         encoding_index, lang, raw_tag = raw_value.unpack("ca3a*")
-        if encoding_index == 1
-=begin
-          comment = Mp3Info::EncodingHelper.decode_utf16(raw_tag)
-          e = comment.encoding
-          out = comment.force_encoding("BINARY").split("\x00\x00").last.force_encoding(e)
-          p out
-=end
-          comment = Mp3Info::EncodingHelper.decode_utf16(raw_tag)
-          split_val = RUBY_1_8 ? "\x00\x00" : "\x00".encode(comment.encoding)
-          out = comment.split(split_val).last rescue ""
-        else
-          comment, out = raw_tag.split("\x00", 2)
-        end
+        comment, out = raw_tag.split(encoding_index == 1 ? "\x00\x00" : "\x00", 2) rescue ["",""]
         puts "COM tag found. encoding: #{encoding_index} lang: #{lang} str: #{out.inspect}" if $DEBUG
       else
         encoding_index = raw_value.getbyte(0) # language encoding (see TEXT_ENCODINGS constant)   
