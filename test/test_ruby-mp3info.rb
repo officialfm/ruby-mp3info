@@ -444,7 +444,67 @@ class Mp3InfoTest < Test::Unit::TestCase
   def test_convert_to_utf16_little_endian
     s = Mp3Info::EncodingHelper.convert_to("track's title €éàïôù", "utf-8", "utf-16")
     expected = "ff fe 74 00 72 00 61 00 63 00 6b 00 27 00 73 00 20 00 74 00 69 00 74 00 6c 00 65 00 20 00 ac 20 e9 00 e0 00 ef 00 f4 00 f9 00"
-    assert_equal(expected, s.bytes.map{|b| b.to_s(16).rjust(2,"0")}.to_a.join(" "))
+    assert_equal(expected, spy_bytes(s))
+  end
+
+  # encode : T***
+  def test_encode_tag
+    id3 = ID3v2.new
+    assert_equal("01 ff fe 61 00 72 00 74 00 69 00 73 00 74 00 27 00 73 00 20 00 61 00 6c 00 62 00 75 00 6d 00 ac 20", spy_bytes(id3.send(:encode_tag, 'TPE1', "artist's album€")), 'TPE1')
+    assert_equal("01 ff fe 74 00 72 00 61 00 63 00 6b 00 27 00 73 00 20 00 74 00 69 00 74 00 6c 00 65 00 ac 20", spy_bytes(id3.send(:encode_tag, 'TIT2', "track's title€")), 'TIT2')
+  end
+
+  # encode : COMM/USLT/SYLT
+  def test_encode_tag_comm_uslt_sylt
+    id3 = ID3v2.new
+    expected = "01 45 4e 47 fe ff 00 00 ff fe 63 00 6f 00 6d 00 6d 00 65 00 6e 00 74 00 ac 20"
+    assert_equal(expected, spy_bytes(id3.send(:encode_tag, 'COMM', "comment€")), 'COMM')
+    assert_equal(expected, spy_bytes(id3.send(:encode_tag, 'USLT', "comment€")), 'USLT')
+    assert_equal(expected, spy_bytes(id3.send(:encode_tag, 'SYLT', "comment€")), 'SYLT')
+    assert_not_equal(expected, spy_bytes(id3.send(:encode_tag, 'TPE1', "comment€")), 'T* are NOT treated like COMM/USLT/SYLT')
+  end
+
+  # encode : W*** (urls)
+  def test_encode_tag_urls
+    id3 = ID3v2.new
+    assert_equal("68 74 74 70 3a 2f 2f 75 72 6c 2e 63 6f 6d", spy_bytes(id3.send(:encode_tag, 'WOAF', "http://url.com")), "urls are always in latin1")
+    assert_equal("68 74 74 70 3a 2f 2f 75 72 6c 2e 63 6f 6d e2 82 ac", spy_bytes(id3.send(:encode_tag, 'WOAF', "http://url.com€")), 'unicode chars are not accepted in latin1, but should not crash')
+  end
+
+  # encode : WXXX (user url). WXXX is a special case of W***, mixing utf16 for description and latin1 for content
+  def test_encode_tag_wxxx
+    id3 = ID3v2.new
+    assert_equal("01 fe ff 00 00 68 74 74 70 3a 2f 2f 75 72 6c 2e 63 6f 6d", spy_bytes(id3.send(:encode_tag, 'WXXX', "http://url.com")))
+    assert_equal("01 fe ff 00 00 68 74 74 70 3a 2f 2f 75 72 6c 2e 63 6f 6d e2 82 ac", spy_bytes(id3.send(:encode_tag, 'WXXX', "http://url.com€")), 'unicode chars are not accepted in latin1, but should not raise an exception')
+  end
+
+  def test_encode_frames_families
+    id3 = ID3v2.new
+    s = "unicode € string"
+    # family 1 (TIT2-like)
+    tit2 = spy_bytes(id3.send(:encode_tag, 'TIT2', s))
+    tpe1 = spy_bytes(id3.send(:encode_tag, 'TPE1', s))
+    tpe2 = spy_bytes(id3.send(:encode_tag, 'TPE2', s))
+    # family 2 (COMM-like)
+    comm = spy_bytes(id3.send(:encode_tag, 'COMM', s))
+    uslt = spy_bytes(id3.send(:encode_tag, 'USLT', s))
+    sylt = spy_bytes(id3.send(:encode_tag, 'SYLT', s))
+    # family 3 (W***-like)
+    woaf = spy_bytes(id3.send(:encode_tag, 'WOAF', s))
+    woar = spy_bytes(id3.send(:encode_tag, 'WOAR', s))
+    woas = spy_bytes(id3.send(:encode_tag, 'WOAS', s))
+    # family 4 (WXXX-like)
+    wxxx = spy_bytes(id3.send(:encode_tag, 'WXXX', s))
+
+    assert(tit2 == tpe1 && tpe1 == tpe2, 'family 1')
+    assert(comm == uslt && uslt == sylt, 'family 2')
+    assert(woaf == woar && woar == woas, 'family 3')
+    assert(tit2 != comm, 'family 1<>2')
+    assert(tit2 != woar, 'family 1<>3')
+    assert(wxxx != tit2, 'family 1<>4')
+    assert(comm != woar, 'family 2<>3')
+    assert(comm != wxxx, 'family 2<>4')
+    assert(woar != wxxx, 'family 3<>4')
   end
 
   def compute_audio_content_mp3_digest(mp3)
@@ -518,6 +578,11 @@ class Mp3InfoTest < Test::Unit::TestCase
       f.write(content)
     end
   end
+  
+  def spy_bytes(s)
+    s.bytes.map{|b| b.to_s(16).rjust(2, '0')}.join(" ")
+  end
+  
 =begin
 
   def test_encoder

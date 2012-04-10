@@ -51,7 +51,7 @@ class Mp3Info
         if to == "utf-16"
           ("\uFEFF" +  value).encode("UTF-16LE")
         else
-          value.encode(to)
+          value.encode(to) rescue value.force_encoding('iso-8859-1').encode(to)
         end
       end
     end

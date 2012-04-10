@@ -358,6 +358,8 @@ class ID3v2 < DelegateClass(Hash)
       
      out.force_encoding(TEXT_ENCODINGS[0]).encode!("utf-8") if name=='WXXX'
 
+     out.force_encoding(TEXT_ENCODINGS[0]).encode!("utf-8") if name=='WXXX' # wxxx's description depends on encoding_index, but content is always latin1
+
       if out
         # remove padding zeros for textual tags
         if RUBY_1_8
