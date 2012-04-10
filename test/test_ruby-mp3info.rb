@@ -447,6 +447,10 @@ class Mp3InfoTest < Test::Unit::TestCase
     assert_equal(expected, spy_bytes(s))
   end
 
+  # #################
+  # encode_tag
+  # #################
+
   # encode : T***
   def test_encode_tag
     id3 = ID3v2.new
@@ -506,6 +510,66 @@ class Mp3InfoTest < Test::Unit::TestCase
     assert(comm != wxxx, 'family 2<>4')
     assert(woar != wxxx, 'family 3<>4')
   end
+
+  # #################
+  # decode_tag
+  # #################
+
+  # decode : COMM/USLT/SYLT
+  def test_decode_tag_comm_uslt_sylt
+    id3 = ID3v2.new
+    raw = "\x01\x45\x4e\x47\xfe\xff\x00\x00\xff\xfe\x63\x00\x6f\x00\x6d\x00\x6d\x00\x65\x00\x6e\x00\x74\x00\xac\x20"
+    assert_equal("comment€", id3.send(:decode_tag, 'COMM', raw), 'COMM')
+    assert_equal("comment€", id3.send(:decode_tag, 'USLT', raw), 'USLT')
+    assert_equal("comment€", id3.send(:decode_tag, 'SYLT', raw), 'SYLT')
+    assert_not_equal("comment€", id3.send(:decode_tag, 'TIT2', raw), 'T* are NOT treated like COMM/USLT/SYLT')
+  end
+  
+  # decode : W*** (urls)
+  def test_decode_tag_urls
+    id3 = ID3v2.new
+    raw = "\x68\x74\x74\x70\x3a\x2f\x2f\x75\x72\x6c\x2e\x63\x6f\x6d"
+    assert_equal("http://url.com", id3.send(:decode_tag, 'WOAF', raw), 'WOAF')
+    assert_nil(id3.send(:decode_tag, 'WXXX', raw), 'WXXX')
+  end
+
+  # decode : WXXX (user url). WXXX is a special case of W***, mixing utf16 for description and latin1 for content
+  def test_decode_tag_wxxx
+    id3 = ID3v2.new
+    raw = "\x01\xfe\xff\x00\x00\x68\x74\x74\x70\x3a\x2f\x2f\x75\x72\x6c\x2e\x63\x6f\x6d"
+    assert_equal("http://url.com", id3.send(:decode_tag, 'WXXX', raw), 'WXXX')
+  end
+
+  def test_decode_frames_families
+    id3 = ID3v2.new
+    raw = "\x01\x45\x4e\x47\xfe\xff\x00\x00\xff\xfe\x63\x00\x6f\x00\x6d\x00\x6d\x00\x65\x00\x6e\x00\x74\x00\xac\x20"
+    # family 1 (TIT2-like)
+    tit2 = id3.send(:decode_tag, 'TIT2', raw)
+    tpe1 = id3.send(:decode_tag, 'TPE1', raw)
+    tpe2 = id3.send(:decode_tag, 'TPE2', raw)
+    # family 2 (COMM-like
+    comm = id3.send(:decode_tag, 'COMM', raw)
+    uslt = id3.send(:decode_tag, 'USLT', raw)
+    sylt = id3.send(:decode_tag, 'SYLT', raw)
+    # family 3 (W***-like
+    woaf = id3.send(:decode_tag, 'WOAF', raw)
+    woar = id3.send(:decode_tag, 'WOAR', raw)
+    woas = id3.send(:decode_tag, 'WOAS', raw)
+    # family 4 (WXXX-like
+    wxxx = id3.send(:decode_tag, 'WXXX', raw)
+
+    assert(tit2 == tpe1 && tpe1 == tpe2, 'family 1')
+    assert(comm == uslt && uslt == sylt, 'family 2')
+    assert(woaf == woar && woar == woas, 'family 3')
+    assert(tit2 != comm, 'family 1<>2')
+    assert(tit2 != woar, 'family 1<>3')
+    assert(wxxx != tit2, 'family 1<>4')
+    assert(comm != woar, 'family 2<>3')
+    assert(comm != wxxx, 'family 2<>4')
+    assert(woar != wxxx, 'family 3<>4')
+  end
+
+  # #########################
 
   def compute_audio_content_mp3_digest(mp3)
     pos, size = mp3.audio_content
