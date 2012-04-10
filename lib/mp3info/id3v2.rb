@@ -298,14 +298,21 @@ class ID3v2 < DelegateClass(Hash)
     puts "encode_tag(#{name.inspect}, #{value.inspect})" if $DEBUG
     name = name.to_s
 
-    if name =~ /^(COM|T)/
+    if name =~ /^(COM|T|USLT|SYLT)/
       transcoded_value = Mp3Info::EncodingHelper.convert_to(value, "utf-8", "utf-16")
+    elsif name =~ /^W/
+      transcoded_value = Mp3Info::EncodingHelper.convert_to(value, "utf-8", "iso-8859-1")
     end
+
     case name
-      when "COMM"
-        puts "encode COMM: lang: #{@options[:lang]}, value #{transcoded_value.inspect}" if $DEBUG
-	s = [ 1, @options[:lang], "\xFE\xFF\x00\x00", transcoded_value].pack("ca3a*a*")
-	return s
+      when "COMM", "USLT", "SYLT"
+        puts "encode COMM/USLT/SYLT: lang: #{@options[:lang]}, value #{transcoded_value.inspect}" if $DEBUG
+        s = [ 1, @options[:lang], "\xFE\xFF\x00\x00", transcoded_value].pack("ca3a*a*")
+        return s
+      when "WXXX"
+        puts "encode WXXX: value #{transcoded_value.inspect}" if $DEBUG
+        s = [ 1, "\xFE\xFF\x00\x00", transcoded_value].pack("ca*a*")
+        return s
       when /^T/
         unless RUBY_1_8
           transcoded_value.force_encoding("BINARY")
@@ -319,18 +326,22 @@ class ID3v2 < DelegateClass(Hash)
   ### Read a tag from file and perform UNICODE translation if needed
   def decode_tag(name, raw_value)
     puts("decode_tag(#{name.inspect}, #{raw_value.inspect})") if $DEBUG
-    if name =~ /^(T|COM)/
-      if name =~ /^COM/
+    if name =~ /^(T|COM|USLT|SYLT|WXXX)/
+      if name =~ /^(COM|USLT|SYLT)/
         encoding_index, lang, raw_tag = raw_value.unpack("ca3a*")
         comment, out = raw_tag.split(encoding_index == 1 ? "\x00\x00" : "\x00", 2) rescue ["",""]
-        puts "COM tag found. encoding: #{encoding_index} lang: #{lang} str: #{out.inspect}" if $DEBUG
+        puts "COM/USLT/SYLT tag found. encoding: #{encoding_index} lang: #{lang} str: #{out.inspect}" if $DEBUG
+      elsif name =~ /^(WXXX)/
+        encoding_index, raw_tag = raw_value.unpack("ca*")
+        comment, out = raw_tag.split(encoding_index == 1 ? "\x00\x00" : "\x00", 2) rescue ["",""]
+        puts "WXXX tag found. encoding: #{encoding_index} str: #{out.inspect}" if $DEBUG
       else
         encoding_index = raw_value.getbyte(0) # language encoding (see TEXT_ENCODINGS constant)   
         out = raw_value[1..-1]
       end
       # we need to convert the string in order to match
       # the requested encoding
-      if encoding_index && TEXT_ENCODINGS[encoding_index] && out
+      if encoding_index && TEXT_ENCODINGS[encoding_index] && out && name!='WXXX'
         if RUBY_1_8
           out = Mp3Info::EncodingHelper.convert_to(out, TEXT_ENCODINGS[encoding_index], "utf-8")
         else
@@ -344,6 +355,8 @@ class ID3v2 < DelegateClass(Hash)
           end
         end
       end
+      
+     out.force_encoding(TEXT_ENCODINGS[0]).encode!("utf-8") if name=='WXXX'
 
       if out
         # remove padding zeros for textual tags
