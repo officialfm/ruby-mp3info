@@ -458,14 +458,13 @@ class Mp3InfoTest < Test::Unit::TestCase
     assert_equal("01 ff fe 74 00 72 00 61 00 63 00 6b 00 27 00 73 00 20 00 74 00 69 00 74 00 6c 00 65 00 ac 20", spy_bytes(id3.send(:encode_tag, 'TIT2', "track's title€")), 'TIT2')
   end
 
-  # encode : COMM/USLT/SYLT
-  def test_encode_tag_comm_uslt_sylt
+  # encode : COMM/USLT
+  def test_encode_tag_comm_uslt
     id3 = ID3v2.new
     expected = "01 45 4e 47 fe ff 00 00 ff fe 63 00 6f 00 6d 00 6d 00 65 00 6e 00 74 00 ac 20"
     assert_equal(expected, spy_bytes(id3.send(:encode_tag, 'COMM', "comment€")), 'COMM')
     assert_equal(expected, spy_bytes(id3.send(:encode_tag, 'USLT', "comment€")), 'USLT')
-    assert_equal(expected, spy_bytes(id3.send(:encode_tag, 'SYLT', "comment€")), 'SYLT')
-    assert_not_equal(expected, spy_bytes(id3.send(:encode_tag, 'TPE1', "comment€")), 'T* are NOT treated like COMM/USLT/SYLT')
+    assert_not_equal(expected, spy_bytes(id3.send(:encode_tag, 'TPE1', "comment€")), 'T* are NOT treated like COMM/USLT')
   end
 
   # encode : W*** (urls)
@@ -492,7 +491,6 @@ class Mp3InfoTest < Test::Unit::TestCase
     # family 2 (COMM-like)
     comm = spy_bytes(id3.send(:encode_tag, 'COMM', s))
     uslt = spy_bytes(id3.send(:encode_tag, 'USLT', s))
-    sylt = spy_bytes(id3.send(:encode_tag, 'SYLT', s))
     # family 3 (W***-like)
     woaf = spy_bytes(id3.send(:encode_tag, 'WOAF', s))
     woar = spy_bytes(id3.send(:encode_tag, 'WOAR', s))
@@ -501,7 +499,7 @@ class Mp3InfoTest < Test::Unit::TestCase
     wxxx = spy_bytes(id3.send(:encode_tag, 'WXXX', s))
 
     assert(tit2 == tpe1 && tpe1 == tpe2, 'family 1')
-    assert(comm == uslt && uslt == sylt, 'family 2')
+    assert(comm == uslt, 'family 2')
     assert(woaf == woar && woar == woas, 'family 3')
     assert(tit2 != comm, 'family 1<>2')
     assert(tit2 != woar, 'family 1<>3')
@@ -515,14 +513,13 @@ class Mp3InfoTest < Test::Unit::TestCase
   # decode_tag
   # #################
 
-  # decode : COMM/USLT/SYLT
-  def test_decode_tag_comm_uslt_sylt
+  # decode : COMM/USLT
+  def test_decode_tag_comm_uslt
     id3 = ID3v2.new
     raw = "\x01\x45\x4e\x47\xfe\xff\x00\x00\xff\xfe\x63\x00\x6f\x00\x6d\x00\x6d\x00\x65\x00\x6e\x00\x74\x00\xac\x20"
     assert_equal("comment€", id3.send(:decode_tag, 'COMM', raw), 'COMM')
     assert_equal("comment€", id3.send(:decode_tag, 'USLT', raw), 'USLT')
-    assert_equal("comment€", id3.send(:decode_tag, 'SYLT', raw), 'SYLT')
-    assert_not_equal("comment€", id3.send(:decode_tag, 'TIT2', raw), 'T* are NOT treated like COMM/USLT/SYLT')
+    assert_not_equal("comment€", id3.send(:decode_tag, 'TIT2', raw), 'T* are NOT treated like COMM/USLT')
   end
   
   # decode : W*** (urls)
@@ -550,7 +547,6 @@ class Mp3InfoTest < Test::Unit::TestCase
     # family 2 (COMM-like
     comm = id3.send(:decode_tag, 'COMM', raw)
     uslt = id3.send(:decode_tag, 'USLT', raw)
-    sylt = id3.send(:decode_tag, 'SYLT', raw)
     # family 3 (W***-like
     woaf = id3.send(:decode_tag, 'WOAF', raw)
     woar = id3.send(:decode_tag, 'WOAR', raw)
@@ -559,7 +555,7 @@ class Mp3InfoTest < Test::Unit::TestCase
     wxxx = id3.send(:decode_tag, 'WXXX', raw)
 
     assert(tit2 == tpe1 && tpe1 == tpe2, 'family 1')
-    assert(comm == uslt && uslt == sylt, 'family 2')
+    assert(comm == uslt, 'family 2')
     assert(woaf == woar && woar == woas, 'family 3')
     assert(tit2 != comm, 'family 1<>2')
     assert(tit2 != woar, 'family 1<>3')

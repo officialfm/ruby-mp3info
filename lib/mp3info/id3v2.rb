@@ -298,15 +298,15 @@ class ID3v2 < DelegateClass(Hash)
     puts "encode_tag(#{name.inspect}, #{value.inspect})" if $DEBUG
     name = name.to_s
 
-    if name =~ /^(COM|T|USLT|SYLT)/
+    if name =~ /^(COM|T|USLT)/
       transcoded_value = Mp3Info::EncodingHelper.convert_to(value, "utf-8", "utf-16")
     elsif name =~ /^W/
       transcoded_value = Mp3Info::EncodingHelper.convert_to(value, "utf-8", "iso-8859-1")
     end
 
     case name
-      when "COMM", "USLT", "SYLT"
-        puts "encode COMM/USLT/SYLT: lang: #{@options[:lang]}, value #{transcoded_value.inspect}" if $DEBUG
+      when "COMM", "USLT"
+        puts "encode COMM/USLT: lang: #{@options[:lang]}, value #{transcoded_value.inspect}" if $DEBUG
         s = [ 1, @options[:lang], "\xFE\xFF\x00\x00", transcoded_value].pack("ca3a*a*")
         return s
       when "WXXX"
@@ -326,11 +326,11 @@ class ID3v2 < DelegateClass(Hash)
   ### Read a tag from file and perform UNICODE translation if needed
   def decode_tag(name, raw_value)
     puts("decode_tag(#{name.inspect}, #{raw_value.inspect})") if $DEBUG
-    if name =~ /^(T|COM|USLT|SYLT|WXXX)/
-      if name =~ /^(COM|USLT|SYLT)/
+    if name =~ /^(T|COM|USLT|WXXX)/
+      if name =~ /^(COM|USLT)/
         encoding_index, lang, raw_tag = raw_value.unpack("ca3a*")
         comment, out = raw_tag.split(encoding_index == 1 ? "\x00\x00" : "\x00", 2) rescue ["",""]
-        puts "COM/USLT/SYLT tag found. encoding: #{encoding_index} lang: #{lang} str: #{out.inspect}" if $DEBUG
+        puts "COM/USLT tag found. encoding: #{encoding_index} lang: #{lang} str: #{out.inspect}" if $DEBUG
       elsif name =~ /^(WXXX)/
         encoding_index, raw_tag = raw_value.unpack("ca*")
         comment, out = raw_tag.split(encoding_index == 1 ? "\x00\x00" : "\x00", 2) rescue ["",""]
