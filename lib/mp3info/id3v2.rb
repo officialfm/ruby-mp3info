@@ -356,9 +356,7 @@ class ID3v2 < DelegateClass(Hash)
         end
       end
       
-     out.force_encoding(TEXT_ENCODINGS[0]).encode!("utf-8") if name=='WXXX'
-
-     out.force_encoding(TEXT_ENCODINGS[0]).encode!("utf-8") if name=='WXXX' && out # wxxx's description depends on encoding_index, but content is always latin1
+      out.force_encoding(TEXT_ENCODINGS[0]).encode!("utf-8") if name=='WXXX' && out # wxxx's description depends on encoding_index, but content is always latin1
 
       if out
         # remove padding zeros for textual tags
