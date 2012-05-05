@@ -389,9 +389,10 @@ class ID3v2 < DelegateClass(Hash)
 	else
 	  size = @io.get32bits
 	end
-        @io.seek(2, IO::SEEK_CUR)     # skip flags
+        flags = frame_flags(@io.read(2))
         puts "name '#{name}' size #{size}" if $DEBUG
-        add_value_to_tag2(name, size)
+        add_value_to_tag2(name, size, flags[:unsync] || @unsync)
+
       end
       break if @io.pos >= @tag_length # 2. reach length from header
     end
@@ -408,7 +409,7 @@ class ID3v2 < DelegateClass(Hash)
         break
       else
         size = (@io.getbyte << 16) + (@io.getbyte << 8) + @io.getbyte
-	add_value_to_tag2(name, size)
+	add_value_to_tag2(name, size, @unsync)
         break if @io.pos >= @tag_length
       end
     end
@@ -417,15 +418,16 @@ class ID3v2 < DelegateClass(Hash)
   ### Add data to tag2["name"]
   ### read lang_encoding, decode data if unicode and
   ### create an array if the key already exists in the tag
-  def add_value_to_tag2(name, size)
-    puts "add_value_to_tag2" if $DEBUG
+  def add_value_to_tag2(name, size, unsync)
+    puts "add_value_to_tag2, unsync #{unsync}" if $DEBUG
 
     if size > 50_000_000
       raise ID3v2Error, "tag size is > 50_000_000"
     end
       
     data_io = @io.read(size)
-    data = decode_tag(name, data_io)
+    data = decode_tag(name, unsync ? resync(data_io) : data_io)
+
     if data && !data.empty?
       if self.keys.include?(name) 
         if self[name].is_a?(Array)
@@ -447,7 +449,27 @@ class ID3v2 < DelegateClass(Hash)
 
     puts "self[#{name.inspect}] = #{self[name].inspect}" if $DEBUG
   end
-  
+
+  def frame_flags(data)
+    flags = {
+      :unsync => false
+    }
+    begin
+      bits = data.unpack("B*")[0]
+      flags[:unsync] = bits[14].chr == '1'
+    rescue
+      # do nothing
+    end
+    flags
+  end
+
+  #
+  # re-sync unsynched content
+  #
+  def resync(data)
+    data.gsub("\xFF\x00".force_encoding('binary'), "\xFF".force_encoding('binary'))
+  end
+
   ### runs thru @file one char at a time looking for best guess of first MPEG
   ###  frame, which should be first 0xff byte after id3v2 padding zero's
   def seek_to_v2_end

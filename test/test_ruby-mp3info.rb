@@ -447,6 +447,35 @@ class Mp3InfoTest < Test::Unit::TestCase
     assert_equal(expected, spy_bytes(s))
   end
 
+  def test_unsynced_frame
+    unsynched = "\xFF\x00\xE0\xFF\x00\x13\xFF\x00\x14".force_encoding('binary')
+    resynched = "\xFF\xE0\xFF\x13\xFF\x14".force_encoding('binary')
+    tag = ID3v2.new
+    mock_io(tag, unsynched)
+
+    tag.send(:add_value_to_tag2, 'foo1', 0, false)
+    assert_equal(unsynched, tag.foo1)
+    tag.send(:add_value_to_tag2, 'foo2', 0, true)
+    assert_equal(resynched, tag.foo2)
+  end
+
+  def test_frame_flags
+    tag = ID3v2.new
+
+    flags = tag.send(:frame_flags, "\x00\x02".force_encoding('binary'))
+    assert(flags[:unsync]) # bit 15 is 1
+
+    flags = tag.send(:frame_flags, "\x00\x00".force_encoding('binary'))
+    refute(flags[:unsync]) # # bit 15 is 0
+  end
+
+  def test_resync
+    tag = ID3v2.new
+    s = "\xFF\x00\xE0\xFF\x00\x13\xFF\x00\x14".force_encoding('binary')
+    expected = "\xFF\xE0\xFF\x13\xFF\x14".force_encoding('binary')
+    assert_equal(expected, tag.send(:resync, s))
+  end
+
   # #################
   # encode_tag
   # #################
@@ -641,6 +670,16 @@ class Mp3InfoTest < Test::Unit::TestCase
   
   def spy_bytes(s)
     s.bytes.map{|b| b.to_s(16).rjust(2, '0')}.join(" ")
+  end
+
+  def mock_io(tag, s)
+    mock = {}
+    eval <<-EOF
+      def mock.read(*args)
+        "#{s}".force_encoding('binary')
+      end
+    EOF
+    tag.instance_variable_set("@io", mock)
   end
   
 =begin
