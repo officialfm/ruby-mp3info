@@ -149,6 +149,22 @@ class Mp3InfoTest < Test::Unit::TestCase
     assert( ! Mp3Info.hastag2?(TEMP_FILE) )
   end
 
+
+  # when frame is not present to begin with, setting it to nil or empty is not a change
+  def test_tag2_changed?
+    w = write_tag2_to_temp_file("TIT2" => "")
+    Mp3Info.open(TEMP_FILE) do |mp3|
+      mp3.tag2.TIT2 = ""
+      refute(mp3.tag2.changed?)
+      mp3.tag2.TIT2 = nil
+      refute(mp3.tag2.changed?)
+      mp3.tag2.TIT2 = "foo"
+      assert(mp3.tag2.changed?)
+      mp3.tag2.TIT2 = 'bar'
+      assert(mp3.tag2.changed?)
+    end
+  end
+
   def test_hastags
     Mp3Info.open(TEMP_FILE) do |info| 
       info.tag1 = @tag

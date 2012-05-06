@@ -204,6 +204,7 @@ class ID3v2 < DelegateClass(Hash)
 
   # does this tag has been changed ?
   def changed?
+    @hash.reject!{|k,v| !@hash_orig[k] && (v.nil? || v.to_s.empty?)} # when a frame was not originally present, setting it to nil or empty doesnt change the tag.
     @hash_orig != @hash
   end
   
