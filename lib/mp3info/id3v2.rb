@@ -318,7 +318,7 @@ class ID3v2 < DelegateClass(Hash)
         unless RUBY_1_8
           transcoded_value.force_encoding("BINARY")
         end
-	return "\x01" + transcoded_value
+	      return "\x01" + transcoded_value
       else
         return value
     end
@@ -382,14 +382,14 @@ class ID3v2 < DelegateClass(Hash)
       name = @io.read(4)
       if name.nil? || name.getbyte(0) == 0 || name == "MP3e" #bug caused by old tagging application "mp3ext" ( http://www.mutschler.de/mp3ext/ )
         @io.seek(-4, IO::SEEK_CUR)    # 1. find a padding zero,
-	seek_to_v2_end
+	      seek_to_v2_end
         break
       else               
-	if @version_maj == 4
-	  size = @io.get_syncsafe
-	else
-	  size = @io.get32bits
-	end
+	      if @version_maj == 4
+	        size = @io.get_syncsafe
+	      else
+	        size = @io.get32bits
+	      end
         flags = frame_flags(@io.read(2))
         puts "name '#{name}' size #{size}" if $DEBUG
         add_value_to_tag2(name, size, flags[:unsync] || @unsync)
@@ -406,11 +406,11 @@ class ID3v2 < DelegateClass(Hash)
       name = @io.read(3)
       if name.nil? || name.getbyte(0) == 0
         @io.seek(-3, IO::SEEK_CUR)
-	seek_to_v2_end
+	      seek_to_v2_end
         break
       else
         size = (@io.getbyte << 16) + (@io.getbyte << 8) + @io.getbyte
-	add_value_to_tag2(name, size, @unsync)
+	      add_value_to_tag2(name, size, @unsync)
         break if @io.pos >= @tag_length
       end
     end
