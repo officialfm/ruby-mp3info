@@ -165,10 +165,18 @@ class ID3v2 < DelegateClass(Hash)
   # See id3v2.4.0-structure document, at section 4.
   TEXT_ENCODINGS = ["iso-8859-1", "utf-16", "utf-16be", "utf-8"]
 
+  DEFAULT_PADDING = 2048 # padding added when we rewrite a file
+
   include Mp3Info::HashKeys
-  
+
   # this is the position in the file where the tag really ends
   attr_reader :io_position
+
+  # optim : if padding is enough, we'll not rewrite a complete mp3, but directly write into the original.
+  attr_reader :rewrite_mp3 # important : this is evaluated during "to_bin"
+
+  # tag size as specified in the id3 tag (= complete tag size without tag header)
+  attr_reader :tag_length
 
   # :+lang+: for writing comments
   #
@@ -181,7 +189,7 @@ class ID3v2 < DelegateClass(Hash)
   # you can access this object like an hash, with [] and []= methods
   # special cases are ["disc_number"] and ["disc_total"] mirroring TPOS attribute
   def initialize(options = {})
-    @options = { :lang => "ENG" }
+    @options = { :lang => "ENG", :write_padding => true}
     if @options[:encoding]
       warn("use of :encoding parameter is DEPRECATED. In ruby 1.8, use utf-8 encoded strings for tags.\n" +
            "In ruby >= 1.9, strings are automatically transcoded from their original encoding.")
@@ -190,9 +198,10 @@ class ID3v2 < DelegateClass(Hash)
     @options.update(options)
 
     @hash = {}
-    #TAGS.keys.each { |k| @hash[k] = nil }
     @hash_orig = {}
     super(@hash)
+    @tag_length = 0
+    @rewrite_mp3 = true
     @parsed = false
     @version_maj = @version_min = nil
   end
@@ -228,6 +237,7 @@ class ID3v2 < DelegateClass(Hash)
     raise(ID3v2Error, "can't find version_maj ('#{version_maj}')") unless [2, 3, 4].include?(version_maj)
     @version_maj, @version_min = version_maj, version_min
     @tag_length = @io.get_syncsafe
+    puts "tag size in file: #{@tag_length}" if $DEBUG
     
     @parsed = true
     begin
@@ -243,7 +253,7 @@ class ID3v2 < DelegateClass(Hash)
       warn("warning: id3v2 tag not fully parsed: #{e.message}")
     end
     @io_position = @io.pos
-    @tag_length = @io_position - original_pos
+    puts "beginning of audio: #{@io_position}" if $DEBUG
 
     @hash_orig = @hash.dup
     #no more reading
@@ -265,15 +275,14 @@ class ID3v2 < DelegateClass(Hash)
       k = TAG_MAPPING_2_2_to_2_3[k] if TAG_MAPPING_2_2_to_2_3.has_key?(k)
 
       # doesn't encode id3v2.2 tags, which have 3 characters
-      next if k.size != 4 
+      next if k.size != 4
       
       # Output one flag for each array element, or one only if it's not an array
       [v].flatten.each do |value|
         data = encode_tag(k, value.to_s)
         #data << "\x00"*2 #End of tag
 
-        tag << k[0,4]   #4 characte max for a tag's key
-        #tag << to_syncsafe(data.size) #+1 because of the language encoding byte
+        tag << k[0,4]   # 4 characters max for frame key
         size = data.size
         unless RUBY_1_8
           size = data.dup.force_encoding("binary").size
@@ -284,13 +293,28 @@ class ID3v2 < DelegateClass(Hash)
       end
     end
 
+    # tag size with padding
+    padding_size = get_padding_size(@tag_length, tag.size)
+    tag_size = tag.size + padding_size
+
     tag_str = "ID3"
-    #version_maj, version_min, unsync, ext_header, experimental, footer 
-    tag_str << [ 3, 0, "0000" ].pack("CCB4")
-    tag_str << [to_syncsafe(tag.size)].pack("N")
+    tag_str << [ 3, 0, "0000" ].pack("CCB4") #version_maj, version_min, unsync, ext_header, experimental, footer
+    tag_str << [to_syncsafe(tag_size)].pack("N")
     tag_str << tag
-    puts "tag in binary format: #{tag_str.inspect}" if $DEBUG
+    tag_str << ("\x00" * padding_size) if padding_size>0
     tag_str
+  end
+
+  def get_padding_size(old_tag_size, new_tag_size)
+    @rewrite_mp3 = true
+    return 0 unless @options[:write_padding]
+
+    if new_tag_size <= old_tag_size
+      @rewrite_mp3 = false
+      return (old_tag_size - new_tag_size)
+    else
+      return DEFAULT_PADDING
+    end
   end
 
   private
@@ -378,10 +402,10 @@ class ID3v2 < DelegateClass(Hash)
   ### reads id3 ver 2.3.x/2.4.x frames and adds the contents to @tag2 hash
   ### NOTE: the id3v2 header does not take padding zero's into consideration
   def read_id3v2_3_frames
-    loop do # there are 2 ways to end the loop
+    loop do # there are 2 ways to end the loop : [1] & [2] below
       name = @io.read(4)
       if name.nil? || name.getbyte(0) == 0 || name == "MP3e" #bug caused by old tagging application "mp3ext" ( http://www.mutschler.de/mp3ext/ )
-        @io.seek(-4, IO::SEEK_CUR)    # 1. find a padding zero,
+        @io.seek(-4, IO::SEEK_CUR)    # [1] find a padding zero
 	      seek_to_v2_end
         break
       else               
@@ -395,7 +419,7 @@ class ID3v2 < DelegateClass(Hash)
         add_value_to_tag2(name, size, flags[:unsync] || @unsync)
 
       end
-      break if @io.pos >= @tag_length # 2. reach length from header
+      break if @io.pos >= (@tag_length+10) # [2] reach tag_size as specified in header (+10 = header size)
     end
   end    
 
@@ -411,7 +435,7 @@ class ID3v2 < DelegateClass(Hash)
       else
         size = (@io.getbyte << 16) + (@io.getbyte << 8) + @io.getbyte
 	      add_value_to_tag2(name, size, @unsync)
-        break if @io.pos >= @tag_length
+        break if @io.pos >= (@tag_length+10) # (+10 = header size)
       end
     end
   end    

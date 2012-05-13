@@ -610,6 +610,95 @@ class Mp3InfoTest < Test::Unit::TestCase
     assert(woar != wxxx, 'family 3<>4')
   end
 
+  # #################
+  # padding
+  # #################
+
+  #
+  #
+  #
+  def test_padding
+    # confirm we dont have any tag
+    Mp3Info.open(TEMP_FILE) {|mp3| assert(mp3.tag2.empty?)}
+
+    # let's write a title
+    Mp3Info.open(TEMP_FILE) {|mp3| mp3.tag2.TIT2 = "hello"}
+
+    # check we've inserted padding
+    tag_size = 0
+    Mp3Info.open(TEMP_FILE) {|mp3|  tag_size = mp3.tag2.tag_length}
+    assert(tag_size >= ID3v2::DEFAULT_PADDING_BLOCK)
+
+    # let's write a longer title
+    Mp3Info.open(TEMP_FILE) {|mp3| mp3.tag2.TIT2 = "hello12345678901234567890234567890123456789012345678902345678901234567890"}
+
+    # check tag size has not changed
+    Mp3Info.open(TEMP_FILE) {|mp3|  assert(tag_size == mp3.tag2.tag_length)}
+
+    # let's write a title longer than padding
+    Mp3Info.open(TEMP_FILE) {|mp3| mp3.tag2.TIT2 = "x" * ID3v2::DEFAULT_PADDING_BLOCK}
+
+    # check tag size has now changed - allocating a new "padding block"
+    Mp3Info.open(TEMP_FILE) {|mp3|
+      assert(mp3.tag2.tag_length > tag_size);
+      assert(mp3.tag2.tag_length > 2 * ID3v2::DEFAULT_PADDING_BLOCK);
+      tag_size = mp3.tag2.tag_length
+    }
+
+    # let's write again a shorter title
+    Mp3Info.open(TEMP_FILE) {|mp3| mp3.tag2.TIT2 = "hello world"}
+
+    # check tag size has not changed (still 2 default padding block, that we're not shrinking)
+    Mp3Info.open(TEMP_FILE) {|mp3|  assert(tag_size == mp3.tag2.tag_length)}
+  end
+
+  #
+  #
+  #
+  def test_padding_without_padding
+    # confirm we dont have any tag
+    Mp3Info.open(TEMP_FILE) {|mp3| assert(mp3.tag2.empty?)}
+
+    # let's write a title, without padding
+    Mp3Info.open(TEMP_FILE, {:write_padding => false}) {|mp3| mp3.tag2.TIT2 = "hello"}
+
+    # check tag size
+    Mp3Info.open(TEMP_FILE) {|mp3|  assert(mp3.tag2.tag_length==23)}
+  end
+
+  #
+  #
+  #
+  def test_padding_not_rewriting_file
+    last_inode = File.stat(TEMP_FILE).ino
+
+    # let's write a title
+    Mp3Info.open(TEMP_FILE) {|mp3| mp3.tag2.TIT2 = "hello"}
+    new_inode = File.stat(TEMP_FILE).ino
+    assert(last_inode != new_inode, "there was no tag => we had to write a new file")
+    last_inode = new_inode
+
+    # let's write a longer title
+    Mp3Info.open(TEMP_FILE) {|mp3| mp3.tag2.TIT2 = "hello12345678901234567890234567890123456789012345678902345678901234567890"}
+    new_inode = File.stat(TEMP_FILE).ino
+    assert(last_inode == new_inode, "we've used the padding => write in the original")
+    last_inode = new_inode
+
+    # let's write a title longer than padding
+    Mp3Info.open(TEMP_FILE) {|mp3| mp3.tag2.TIT2 = "x" * ID3v2::DEFAULT_PADDING_BLOCK}
+    new_inode = File.stat(TEMP_FILE).ino
+    assert(last_inode != new_inode, "padding wasnt enough, we had to write a new file")
+    last_inode = new_inode
+
+    # let's write again a shorter title
+    Mp3Info.open(TEMP_FILE) {|mp3| mp3.tag2.TIT2 = "hello world"}
+    new_inode = File.stat(TEMP_FILE).ino
+    assert(last_inode == new_inode, "padding is large enough, write in the original")
+    last_inode = new_inode
+  end
+
+  # #########################
+  # helpers
   # #########################
 
   def compute_audio_content_mp3_digest(mp3)
