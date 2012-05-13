@@ -52,7 +52,18 @@ class ID3v2 < DelegateClass(Hash)
   # you can access this object like an hash, with [] and []= methods
   # special cases are ["disc_number"] and ["disc_total"] mirroring TPOS attribute
   def initialize(options = {})
-    @options = { :lang => "ENG", :padding => true, :padding_size => DEFAULT_PADDING, :smart_padding => true, :minimum_tag_size => 0}
+
+    # default options
+    @options = {
+      :lang => "ENG",
+      :padding => true,
+      :padding_size => DEFAULT_PADDING,
+      :smart_padding => true,
+      :minimum_tag_size => 0,
+      :minimum_tag_size_callback => nil
+    }
+
+    # deprecation
     if @options[:encoding]
       warn("use of :encoding parameter is DEPRECATED. In ruby 1.8, use utf-8 encoded strings for tags.\n" +
            "In ruby >= 1.9, strings are automatically transcoded from their original encoding.")
@@ -193,7 +204,7 @@ class ID3v2 < DelegateClass(Hash)
     
     # smart padding : expand the padding to reach a minimum tag size
     if @options[:smart_padding]
-      min_size = minimum_tag_size
+      min_size = minimum_tag_size(@filesize)
       if (new_tag_size + padding < min_size)
         padding = (min_size - new_tag_size)
         @rewrite_mp3 = true
@@ -212,14 +223,18 @@ class ID3v2 < DelegateClass(Hash)
   #   Strategy also made acceptable because : the bigger the file, the less you'll care about the added overhead.
   #
   #
-  def minimum_tag_size
+  def minimum_tag_size(filesize)
+    # custom behaviour
+    return @options[:minimum_tag_size_callback].call(filesize) if @options[:minimum_tag_size_callback]
+
+    # default behaviour
     if @options[:minimum_tag_size]>0
       return @options[:minimum_tag_size]
-    elsif @filesize > 7.megabytes
+    elsif filesize > 7.megabytes
       return 400.kilobytes
-    elsif @filesize > 40.megabytes
+    elsif filesize > 40.megabytes
       return 600.kilobytes
-    elsif @filesize > 100.megabytes
+    elsif filesize > 100.megabytes
       return 800.kilobytes
     else
       return 0 # not really expensive to rewrite small files + booking less than a certain amount is useless (artwork)

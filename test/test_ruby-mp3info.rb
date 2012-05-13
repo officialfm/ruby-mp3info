@@ -762,10 +762,8 @@ class Mp3InfoTest < Test::Unit::TestCase
 
     # let's write a title with smart_padding (activated by default) to fill min_tag_size
     Mp3Info.open(TEMP_FILE, {:minimum_tag_size => min_tag_size}) {|mp3| mp3.tag2.TIT2 = "new title"}
-    Mp3Info.open(TEMP_FILE) {|mp3| 
-      assert(mp3.tag2.tag_length >= min_tag_size, 'smart_padding enabled')
-    }
-    
+    Mp3Info.open(TEMP_FILE) {|mp3|assert(mp3.tag2.tag_length >= min_tag_size, 'smart_padding enabled')}
+
     # let's confirm now that we can write large frame without rewriting the file
     inode = File.stat(TEMP_FILE).ino
     Mp3Info.open(TEMP_FILE) {|mp3| mp3.tag2.APIC = "x" * (min_tag_size - 50) } # -50 to allow the rest of infos written above
@@ -785,9 +783,29 @@ class Mp3InfoTest < Test::Unit::TestCase
     filesize = File.size(TEMP_FILE)
     assert (filesize > original_filesize && filesize > min_tag_size)
 
+    # remove the tag and assert padding has been removed too
     Mp3Info.removetag2(TEMP_FILE)
     filesize = File.size(TEMP_FILE)
     assert (filesize == original_filesize)
+  end
+
+  #
+  #
+  #
+  def test_smart_padding_custom_callback
+    # default behaviour exists
+    Mp3Info.open(TEMP_FILE) {|mp3| assert(mp3.tag2.send(:minimum_tag_size, 50.megabytes) > 0)}
+
+    # custom callback
+    custom_minimum_tag_size = lambda { |filesize|
+      return filesize == 123 ? 456 : 789
+    }
+
+    # custom callback is used rather than default
+    Mp3Info.open(TEMP_FILE, {:minimum_tag_size_callback => custom_minimum_tag_size}) {|mp3|
+      assert_equal(456, mp3.tag2.send(:minimum_tag_size, 123))
+      assert_equal(789, mp3.tag2.send(:minimum_tag_size, 0))
+    }
   end
 
   # #########################
