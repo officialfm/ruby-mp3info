@@ -4,6 +4,7 @@
 # Website:: http://ruby-mp3info.rubyforge.org/
 
 require "delegate"
+require 'active_support/core_ext/numeric/bytes.rb'
 
 if RUBY_VERSION[0..2] == "1.8"
   require "iconv"
@@ -25,11 +26,11 @@ class ID3v2 < DelegateClass(Hash)
   include Mp3Info::FrameList
 
   include Mp3Info::HashKeys
-
+  
   # See id3v2.4.0-structure document, at section 4.
   TEXT_ENCODINGS = ["iso-8859-1", "utf-16", "utf-16be", "utf-8"]
 
-  DEFAULT_PADDING = 2048 # padding added when we rewrite a file
+  DEFAULT_PADDING = 2.kilobytes # default padding added when we rewrite a file. = allow small changes without rewriting the file
 
   # this is the position in the file where the tag really ends
   attr_reader :io_position
@@ -51,7 +52,7 @@ class ID3v2 < DelegateClass(Hash)
   # you can access this object like an hash, with [] and []= methods
   # special cases are ["disc_number"] and ["disc_total"] mirroring TPOS attribute
   def initialize(options = {})
-    @options = { :lang => "ENG", :padding => true, :padding_size => DEFAULT_PADDING}
+    @options = { :lang => "ENG", :padding => true, :padding_size => DEFAULT_PADDING, :smart_padding => true, :minimum_tag_size => 0}
     if @options[:encoding]
       warn("use of :encoding parameter is DEPRECATED. In ruby 1.8, use utf-8 encoded strings for tags.\n" +
            "In ruby >= 1.9, strings are automatically transcoded from their original encoding.")
@@ -65,6 +66,7 @@ class ID3v2 < DelegateClass(Hash)
     @tag_length = 0
     @rewrite_mp3 = true
     @parsed = false
+    @filesize = 0
     @version_maj = @version_min = nil
   end
 
@@ -92,6 +94,7 @@ class ID3v2 < DelegateClass(Hash)
   ### gets id3v2 tag information from io object (must support #seek() method)
   def from_io(io)
     @io = io
+    @filesize = @io.size rescue 0 # chab : rescue as i'm not sure of behaviour with stream
     original_pos = @io.pos
     @io.extend(Mp3Info::Mp3FileMethods)
     version_maj, version_min, flags = @io.read(3).unpack("CCB4")
@@ -156,31 +159,76 @@ class ID3v2 < DelegateClass(Hash)
     end
 
     # tag size with padding
-    padding_size = get_padding_size(@tag_length, tag.size)
-    tag_size = tag.size + padding_size
+    padding = padding_size(@tag_length, tag.size)
+    tag_size = tag.size + padding
 
     tag_str = "ID3"
     tag_str << [ 3, 0, "0000" ].pack("CCB4") #version_maj, version_min, unsync, ext_header, experimental, footer
     tag_str << [to_syncsafe(tag_size)].pack("N")
     tag_str << tag
-    tag_str << ("\x00" * padding_size) if padding_size>0
+    tag_str << ("\x00" * padding) if padding>0
     tag_str
   end
 
-  def get_padding_size(old_tag_size, new_tag_size)
-    @rewrite_mp3 = true
-    return 0 unless @options[:padding]
-
-    if new_tag_size <= old_tag_size
-      @rewrite_mp3 = false
-      return (old_tag_size - new_tag_size)
-    else
-      return @options[:padding_size]
-    end
-  end
+  # ###############################
+  # private methods
+  # ###############################
 
   private
 
+  #
+  #
+  #
+  def padding_size(old_tag_size, new_tag_size)
+    @rewrite_mp3 = true
+    return 0 unless @options[:padding]
+
+    # padding size
+    if new_tag_size <= old_tag_size
+      @rewrite_mp3 = false
+      padding = old_tag_size - new_tag_size
+    else
+      padding = @options[:padding_size]
+    end
+    
+    # smart padding : expand the padding to reach a minimum tag size
+    if @options[:smart_padding]
+      min_size = minimum_tag_size
+      if (new_tag_size + padding < min_size)
+        padding = (min_size - new_tag_size)
+        @rewrite_mp3 = true
+      end
+    end
+
+    padding
+  end
+
+  #
+  # 
+  # This will affect the padding resulting size (we assume that artwork is commonly used in id3 => reason why we book hundreds of kb)
+  #
+  #   the bigger the original file is => the longer it will take to rewrite it => the bigger the padding should be to avoid that
+  #
+  #   Strategy also made acceptable because : the bigger the file, the less you'll care about the added overhead.
+  #
+  #
+  def minimum_tag_size
+    if @options[:minimum_tag_size]>0
+      return @options[:minimum_tag_size]
+    elsif @filesize > 7.megabytes
+      return 400.kilobytes
+    elsif @filesize > 40.megabytes
+      return 600.kilobytes
+    elsif @filesize > 100.megabytes
+      return 800.kilobytes
+    else
+      return 0 # not really expensive to rewrite small files + booking less than a certain amount is useless (artwork)
+    end
+  end
+
+  #
+  #
+  #
   def encode_tag(name, value)
     puts "encode_tag(#{name.inspect}, #{value.inspect})" if $DEBUG
     name = name.to_s

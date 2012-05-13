@@ -728,6 +728,67 @@ class Mp3InfoTest < Test::Unit::TestCase
     # check the size
     Mp3Info.open(TEMP_FILE) {|mp3|  assert(mp3.tag2.tag_length == tag_size)}
   end
+  
+  #
+  #
+  #
+  def test_padding_on_remove_tag
+    original_filesize = File.size(TEMP_FILE)
+
+    # write tag with smart_padding
+    Mp3Info.open(TEMP_FILE, {:smart_padding => false}) {|mp3| mp3.tag2.TIT2 = "hello"}
+    filesize = File.size(TEMP_FILE)
+    assert (filesize > original_filesize)
+
+    Mp3Info.removetag2(TEMP_FILE)
+    filesize = File.size(TEMP_FILE)
+    assert (filesize == original_filesize)
+  end
+  
+  
+  # #########################
+  # smart_padding
+  # #########################
+  
+  #
+  #
+  #
+  def test_smart_padding
+    min_tag_size = 200.kilobytes
+
+    # advanced padding disabled
+    Mp3Info.open(TEMP_FILE, {:smart_padding => false}) {|mp3| mp3.tag2.TIT2 = "hello"}
+    Mp3Info.open(TEMP_FILE) {|mp3|  assert(mp3.tag2.tag_length < min_tag_size, 'smart_padding disabled')}
+
+    # let's write a title with smart_padding (activated by default) to fill min_tag_size
+    Mp3Info.open(TEMP_FILE, {:minimum_tag_size => min_tag_size}) {|mp3| mp3.tag2.TIT2 = "new title"}
+    Mp3Info.open(TEMP_FILE) {|mp3| 
+      assert(mp3.tag2.tag_length >= min_tag_size, 'smart_padding enabled')
+    }
+    
+    # let's confirm now that we can write large frame without rewriting the file
+    inode = File.stat(TEMP_FILE).ino
+    Mp3Info.open(TEMP_FILE) {|mp3| mp3.tag2.APIC = "x" * (min_tag_size - 50) } # -50 to allow the rest of infos written above
+    Mp3Info.open(TEMP_FILE) {|mp3|  assert(mp3.tag2.tag_length >= min_tag_size, 'smart_padding in use')}
+    assert(inode == File.stat(TEMP_FILE).ino, 'enough padding to write in the original') # still the same file
+  end
+
+  #
+  #
+  #
+  def test_smart_padding_on_remove_tag
+    min_tag_size = 200.kilobytes
+    original_filesize = File.size(TEMP_FILE)
+
+    # write tag with smart_padding
+    Mp3Info.open(TEMP_FILE, {:minimum_tag_size => min_tag_size}) {|mp3| mp3.tag2.TIT2 = "hello"}
+    filesize = File.size(TEMP_FILE)
+    assert (filesize > original_filesize && filesize > min_tag_size)
+
+    Mp3Info.removetag2(TEMP_FILE)
+    filesize = File.size(TEMP_FILE)
+    assert (filesize == original_filesize)
+  end
 
   # #########################
   # helpers
