@@ -189,7 +189,7 @@ class ID3v2 < DelegateClass(Hash)
   # you can access this object like an hash, with [] and []= methods
   # special cases are ["disc_number"] and ["disc_total"] mirroring TPOS attribute
   def initialize(options = {})
-    @options = { :lang => "ENG", :write_padding => true}
+    @options = { :lang => "ENG", :padding => true, :padding_size => DEFAULT_PADDING}
     if @options[:encoding]
       warn("use of :encoding parameter is DEPRECATED. In ruby 1.8, use utf-8 encoded strings for tags.\n" +
            "In ruby >= 1.9, strings are automatically transcoded from their original encoding.")
@@ -307,13 +307,13 @@ class ID3v2 < DelegateClass(Hash)
 
   def get_padding_size(old_tag_size, new_tag_size)
     @rewrite_mp3 = true
-    return 0 unless @options[:write_padding]
+    return 0 unless @options[:padding]
 
     if new_tag_size <= old_tag_size
       @rewrite_mp3 = false
       return (old_tag_size - new_tag_size)
     else
-      return DEFAULT_PADDING
+      return @options[:padding_size]
     end
   end
 
