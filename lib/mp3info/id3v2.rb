@@ -248,10 +248,10 @@ class ID3v2 < DelegateClass(Hash)
     puts "encode_tag(#{name.inspect}, #{value.inspect})" if $DEBUG
     name = name.to_s
 
-    if name =~ /^(COM|T|USLT)/
-      transcoded_value = Mp3Info::EncodingHelper.convert_to(value, "utf-8", "utf-16")
-    elsif name =~ /^W/
+    if name =~ /^(W|TRCK)/
       transcoded_value = Mp3Info::EncodingHelper.convert_to(value, "utf-8", "iso-8859-1")
+    elsif name =~ /^(COM|T|USLT)/
+      transcoded_value = Mp3Info::EncodingHelper.convert_to(value, "utf-8", "utf-16")
     end
 
     case name
@@ -263,11 +263,13 @@ class ID3v2 < DelegateClass(Hash)
         puts "encode WXXX: value #{transcoded_value.inspect}" if $DEBUG
         s = [ 1, "\xFE\xFF\x00\x00", transcoded_value].pack("ca*a*")
         return s
+      when /^TRCK/
+        return "\x00" + transcoded_value
       when /^T/
         unless RUBY_1_8
           transcoded_value.force_encoding("BINARY")
         end
-	      return "\x01" + transcoded_value
+        return "\x01" + transcoded_value
       else
         return value
     end
