@@ -230,12 +230,10 @@ class ID3v2 < DelegateClass(Hash)
     # default behaviour
     if @options[:minimum_tag_size]>0
       return @options[:minimum_tag_size]
-    elsif filesize > 7.megabytes
-      return 400.kilobytes
-    elsif filesize > 40.megabytes
-      return 600.kilobytes
-    elsif filesize > 100.megabytes
-      return 800.kilobytes
+    elsif filesize > 20.megabytes
+      return 200.kilobytes
+    elsif filesize > 5.megabytes
+      return 100.kilobytes
     else
       return 0 # not really expensive to rewrite small files + booking less than a certain amount is useless (artwork)
     end
