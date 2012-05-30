@@ -493,6 +493,18 @@ class Mp3InfoTest < Test::Unit::TestCase
   end
 
   # #################
+  # to_bin
+  # #################
+
+  def test_to_bin_mixed_utf8_binary
+    id3 = ID3v2.new
+    id3.TIT2 = "€€€"
+    id3.WOAF = 'http://url.com¨'
+    id3.RVAD = 'http://url.com¨'
+    assert_match /.*TIT2.*WOAF.*RVAD.*/, id3.to_bin
+  end
+
+  # #################
   # encode_tag
   # #################
 

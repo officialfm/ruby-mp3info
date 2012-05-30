@@ -268,8 +268,10 @@ class ID3v2 < DelegateClass(Hash)
           transcoded_value.force_encoding("BINARY")
         end
         return "\x01" + transcoded_value
+      when /^W/
+        return transcoded_value.force_encoding("binary")
       else
-        return value
+        return value.force_encoding("binary")
     end
   end
 
