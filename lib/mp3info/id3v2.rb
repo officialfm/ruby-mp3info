@@ -21,12 +21,12 @@ class ID3v2Error < StandardError ; end
 # It works like a hash, where key represents the tag name as 3 or 4 upper case letters
 # (respectively related to 2.2 and 2.3+ tag) and value represented as array or raw value.
 # Written version is always 2.3.
-class ID3v2 < DelegateClass(Hash) 
+class ID3v2 < DelegateClass(Hash)
 
   include Mp3Info::FrameList
 
   include Mp3Info::HashKeys
-  
+
   # See id3v2.4.0-structure document, at section 4.
   TEXT_ENCODINGS = ["iso-8859-1", "utf-16", "utf-16be", "utf-8"]
 
@@ -43,11 +43,11 @@ class ID3v2 < DelegateClass(Hash)
 
   # :+lang+: for writing comments
   #
-  # [DEPRECATION] :+encoding+: one of the string of +TEXT_ENCODINGS+, 
+  # [DEPRECATION] :+encoding+: one of the string of +TEXT_ENCODINGS+,
   # use of :encoding parameter is DEPRECATED. In ruby 1.8, use utf-8 encoded strings for tags.
   # In ruby >= 1.9, strings are automatically transcoded from their originaloriginal  encoding.
   attr_reader :options
-  
+
   # possible options are described above ('options' attribute)
   # you can access this object like an hash, with [] and []= methods
   # special cases are ["disc_number"] and ["disc_total"] mirroring TPOS attribute
@@ -91,7 +91,7 @@ class ID3v2 < DelegateClass(Hash)
     @hash.reject!{|k,v| !@hash_orig[k] && (v.nil? || v.to_s.empty?)} # when a frame was not originally present, setting it to nil or empty doesnt change the tag.
     @hash_orig != @hash
   end
-  
+
   # full version of this tag (like "2.3.0") or nil
   # if tag was not correctly read
   def version
@@ -114,7 +114,7 @@ class ID3v2 < DelegateClass(Hash)
     @version_maj, @version_min = version_maj, version_min
     @tag_length = @io.get_syncsafe
     puts "tag size in file: #{@tag_length}" if $DEBUG
-    
+
     @parsed = true
     begin
       case @version_maj
@@ -146,13 +146,13 @@ class ID3v2 < DelegateClass(Hash)
     @hash.each do |k, v|
       next unless v
       next if v.respond_to?("empty?") and v.empty?
-      
+
       # Automagically translate V2 to V3 tags
       k = TAG_MAPPING_2_2_to_2_3[k] if TAG_MAPPING_2_2_to_2_3.has_key?(k)
 
       # doesn't encode id3v2.2 tags, which have 3 characters
       next if k.size != 4
-      
+
       # Output one flag for each array element, or one only if it's not an array
       [v].flatten.each do |value|
         data = encode_tag(k, value.to_s)
@@ -201,7 +201,7 @@ class ID3v2 < DelegateClass(Hash)
     else
       padding = @options[:padding_size]
     end
-    
+
     # smart padding : expand the padding to reach a minimum tag size
     if @options[:smart_padding]
       min_size = minimum_tag_size(@filesize)
@@ -215,7 +215,7 @@ class ID3v2 < DelegateClass(Hash)
   end
 
   #
-  # 
+  #
   # This will affect the padding resulting size (we assume that artwork is commonly used in id3 => reason why we book hundreds of kb)
   #
   #   the bigger the original file is => the longer it will take to rewrite it => the bigger the padding should be to avoid that
@@ -288,7 +288,7 @@ class ID3v2 < DelegateClass(Hash)
         comment, out = raw_tag.split(encoding_index == 1 ? "\x00\x00" : "\x00", 2) rescue ["",""]
         puts "WXXX tag found. encoding: #{encoding_index} str: #{out.inspect}" if $DEBUG
       else
-        encoding_index = raw_value.getbyte(0) # language encoding (see TEXT_ENCODINGS constant)   
+        encoding_index = raw_value.getbyte(0) # language encoding (see TEXT_ENCODINGS constant)
         out = raw_value[1..-1]
       end
       # we need to convert the string in order to match
@@ -307,7 +307,7 @@ class ID3v2 < DelegateClass(Hash)
           end
         end
       end
-      
+
       out.force_encoding(TEXT_ENCODINGS[0]).encode!("utf-8") if name=='WXXX' && out # wxxx's description depends on encoding_index, but content is always latin1
 
       if out
@@ -317,7 +317,7 @@ class ID3v2 < DelegateClass(Hash)
         else
           r = Regexp.new("\x00*$".encode(out.encoding))
         end
-        out.sub!(r, '') 
+        out.sub!(r, '')
       end
 
       return out
@@ -335,7 +335,7 @@ class ID3v2 < DelegateClass(Hash)
         @io.seek(-4, IO::SEEK_CUR)    # [1] find a padding zero
 	      seek_to_v2_end
         break
-      else               
+      else
 	      if @version_maj == 4
 	        size = @io.get_syncsafe
 	      else
@@ -343,12 +343,11 @@ class ID3v2 < DelegateClass(Hash)
 	      end
         flags = frame_flags(@io.read(2))
         puts "name '#{name}' size #{size}" if $DEBUG
-        add_value_to_tag2(name, size, flags[:unsync] || @unsync)
-
+        add_value_to_tag2(name, size, flags[:unsync] || @unsync, flags[:data_length_indicator])
       end
       break if @io.pos >= (@tag_length+10) # [2] reach tag_size as specified in header (+10 = header size)
     end
-  end    
+  end
 
   ### reads id3 ver 2.2.x frames and adds the contents to @tag2 hash
   ### NOTE: the id3v2 header does not take padding zero's into consideration
@@ -365,23 +364,25 @@ class ID3v2 < DelegateClass(Hash)
         break if @io.pos >= (@tag_length+10) # (+10 = header size)
       end
     end
-  end    
-  
+  end
+
   ### Add data to tag2["name"]
   ### read lang_encoding, decode data if unicode and
   ### create an array if the key already exists in the tag
-  def add_value_to_tag2(name, size, unsync)
+  def add_value_to_tag2(name, size, unsync, data_length_indicator = false)
     puts "add_value_to_tag2, unsync #{unsync}" if $DEBUG
 
     if size > 50_000_000
       raise ID3v2Error, "tag size is > 50_000_000"
     end
-      
-    data_io = @io.read(size)
+
+    data_length = @io.get_syncsafe if data_length_indicator # skip 4 bytes data_length_indicator if any
+    data_io = @io.read(size - (data_length_indicator ? 4 : 0))
+
     data = decode_tag(name, unsync ? resync(data_io) : data_io)
 
     if data && !data.empty?
-      if self.keys.include?(name) 
+      if self.keys.include?(name)
         if self[name].is_a?(Array)
           unless self[name].include?(data)
             self[name] << data
@@ -390,7 +391,7 @@ class ID3v2 < DelegateClass(Hash)
           self[name] = [ self[name], data ]
         end
       else
-        self[name] = data 
+        self[name] = data
       end
 
       if name == "TPOS" && data =~ /(\d+)\s*\/\s*(\d+)/
@@ -404,11 +405,13 @@ class ID3v2 < DelegateClass(Hash)
 
   def frame_flags(data)
     flags = {
-      :unsync => false
+      :unsync => false,
+      :data_length_indicator => false
     }
     begin
       bits = data.unpack("B*")[0]
       flags[:unsync] = bits[14].chr == '1'
+      flags[:data_length_indicator] = bits[15].chr == '1'
     rescue
       # do nothing
     end
@@ -430,7 +433,7 @@ class ID3v2 < DelegateClass(Hash)
     end
     @io.seek(-1, IO::SEEK_CUR)
   end
-  
+
   ### convert an 32 integer to a syncsafe string
   def to_syncsafe(num)
     ( (num<<3) & 0x7f000000 )  + ( (num<<2) & 0x7f0000 ) + ( (num<<1) & 0x7f00 ) + ( num & 0x7f )
