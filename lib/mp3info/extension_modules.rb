@@ -32,8 +32,9 @@ class Mp3Info
     #  http://blog.tddium.com/2012/04/03/down-the-rabbit-hole-with-utf-8-yaml-and-rspec/
     #
     def safe_encode!(encoding = 'UTF-8')
-       self.force_encoding("BINARY").encode!(encoding, invalid: :replace, undef: :replace, replace: '') unless self.force_encoding(encoding).valid_encoding?
-       self
+      self.encode!(encoding) rescue nil
+      self.force_encoding("BINARY").encode!(encoding, invalid: :replace, undef: :replace, replace: '') unless self.valid_encoding?
+      self
     end
 
   end
