@@ -570,6 +570,15 @@ class Mp3InfoTest < Test::Unit::TestCase
   # decode_tag
   # #################
 
+  # decode : safe encoding when invalid byte sequence is found
+  def test_decode_tag_safe_encoding
+    id3 = ID3v2.new
+    raw = "\x03\x61\xD2\x62"
+    decoded = id3.send(:decode_tag, 'TIT2', raw)
+    assert_equal("UTF-8", decoded.encoding.to_s)
+    assert_equal("ab", decoded)
+  end
+
   # decode : COMM/USLT
   def test_decode_tag_comm_uslt
     id3 = ID3v2.new
