@@ -317,6 +317,7 @@ class ID3v2 < DelegateClass(Hash)
         else
           r = Regexp.new("\x00*$".encode(out.encoding))
         end
+        out.safe_encode!('utf-8')
         out.sub!(r, '')
       end
 
