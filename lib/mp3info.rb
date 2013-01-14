@@ -6,6 +6,7 @@
 require "fileutils"
 require "stringio"
 require "mp3info/extension_modules"
+require "mp3info/frame_list"
 require "mp3info/id3v2"
 
 # ruby -d to display debugging infos
@@ -430,32 +431,39 @@ class Mp3Info
     if @tag2.changed?
       puts "@tag2 has changed" if $DEBUG
       raise(Mp3InfoError, "file is not writable") unless File.writable?(@filename_or_io)
-      tempfile_name = nil
-      File.open(@filename_or_io, 'rb+') do |file|
-        #if tag2 already exists, seek to end of it
-        if @tag2.parsed?
-          file.seek(@tag2.io_position)
-        end
-  #      if @io.read(3) == "ID3"
-  #        version_maj, version_min, flags = @io.read(3).unpack("CCB4")
-  #        unsync, ext_header, experimental, footer = (0..3).collect { |i| flags[i].chr == '1' }
-  #        tag2_len = @io.get_syncsafe
-  #        @io.seek(@io.get_syncsafe - 4, IO::SEEK_CUR) if ext_header
-  #        @io.seek(tag2_len, IO::SEEK_CUR)
-  #      end
-        tempfile_name = @filename_or_io + ".tmp"
-        File.open(tempfile_name, "wb") do |tempfile|
-          unless @tag2.empty?
-            tempfile.write(@tag2.to_bin)
-          end
 
-          bufsiz = file.stat.blksize || 4096
-          while buf = file.read(bufsiz)
-            tempfile.write(buf)
-          end
+      @final_tag = @tag2.to_bin
+      if @tag2.empty? || @tag2.rewrite_mp3
+        write_tag_into_new_mp3
+      else
+        write_tag_into_original
+      end
+
+    end
+  end
+
+  def  write_tag_into_new_mp3
+    puts "< writing in new mp3" if $DEBUG
+    tempfile_name = @filename_or_io + ".tmp"
+
+    File.open(@filename_or_io, 'rb+') do |file|
+      file.seek(@tag2.io_position) if @tag2.parsed? # if tag2 already exists, seek to end of it
+      File.open(tempfile_name, "wb") do |tempfile|
+        tempfile.write(@final_tag) unless @tag2.empty?
+        bufsiz = file.stat.blksize || 4096
+        while buf = file.read(bufsiz)
+          tempfile.write(buf)
         end
       end
-      File.rename(tempfile_name, @filename_or_io)
+    end
+
+    File.rename(tempfile_name, @filename_or_io)
+  end
+
+  def write_tag_into_original
+    puts "< writing in original mp3" if $DEBUG
+    File.open(@filename_or_io, 'rb+') do |file|
+      file.write(@final_tag)
     end
   end
 
@@ -491,8 +499,8 @@ class Mp3Info
     end
   end
 
-private
-  
+  private
+
   def Mp3Info.get_frames_infos(head)
     # be sure we are in sync
     if ((head & 0xffe00000) != 0xffe00000)    || # 11 bit MPEG frame sync

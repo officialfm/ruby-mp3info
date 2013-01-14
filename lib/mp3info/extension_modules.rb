@@ -22,6 +22,21 @@ class Mp3Info
     if RUBY_VERSION < "1.9.0"
       alias getbyte []
     end
+
+    #
+    #  "1\xD23".encode!("UTF-8").valid_encoding? => false # wtf!!
+    #  "1\xD23".encode!("UTF-8", invalid: :replace, undef: :replace, replace: '').valid_encoding? => false # wtf!!
+    #  "1\xD23".force_encoding("BINARY").encode!("UTF-8", invalid: :replace, undef: :replace, replace: '').valid_encoding? => true # duh!
+    #  "1\xD23".safe_encode! => "13" # aaaah
+    #
+    #  http://blog.tddium.com/2012/04/03/down-the-rabbit-hole-with-utf-8-yaml-and-rspec/
+    #
+    def safe_encode!(encoding = 'UTF-8')
+      self.encode!(encoding) rescue nil
+      self.force_encoding("BINARY").encode!(encoding, invalid: :replace, undef: :replace, replace: '') unless self.valid_encoding?
+      self
+    end
+
   end
 
   module Mp3FileMethods #:nodoc: 
@@ -49,9 +64,9 @@ class Mp3Info
         ruby_18_encode(from, to, value)
       else
         if to == "utf-16"
-          ("\uFEFF" +  value).encode("UTF-16LE") # Chab 01.apr.2012 : moved from big to little endian for more compatibility (Windows Media Player, older Quicktime..)
+          ("\uFEFF" +  value).encode("UTF-16LE")
         else
-          value.encode(to)
+          value.encode(to) rescue value.force_encoding('iso-8859-1').encode(to)
         end
       end
     end
