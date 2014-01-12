@@ -4,7 +4,7 @@
 # Website:: http://ruby-mp3info.rubyforge.org/
 
 require "delegate"
-require 'active_support/core_ext/numeric/bytes.rb'
+require 'active_support/core_ext/numeric/bytes'
 
 if RUBY_VERSION[0..2] == "1.8"
   require "iconv"
@@ -330,7 +330,7 @@ class ID3v2 < DelegateClass(Hash)
   ### reads id3 ver 2.3.x/2.4.x frames and adds the contents to @tag2 hash
   ### NOTE: the id3v2 header does not take padding zero's into consideration
   def read_id3v2_3_frames
-    loop do # there are 2 ways to end the loop : [1] & [2] below
+    while true # there are 2 ways to end the loop : [1] & [2] below
       name = @io.read(4)
       if name.nil? || name.getbyte(0) == 0 || name == "MP3e" #bug caused by old tagging application "mp3ext" ( http://www.mutschler.de/mp3ext/ )
         @io.seek(-4, IO::SEEK_CUR)    # [1] find a padding zero
@@ -353,7 +353,7 @@ class ID3v2 < DelegateClass(Hash)
   ### reads id3 ver 2.2.x frames and adds the contents to @tag2 hash
   ### NOTE: the id3v2 header does not take padding zero's into consideration
   def read_id3v2_2_frames
-    loop do
+    while true
       name = @io.read(3)
       if name.nil? || name.getbyte(0) == 0
         @io.seek(-3, IO::SEEK_CUR)
