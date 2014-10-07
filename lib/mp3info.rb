@@ -457,6 +457,12 @@ class Mp3Info
       end
     end
 
+    mode =
+      begin
+        File.stat(@filename_or_io).mode
+      rescue TypeError
+      end
+    File.chmod(mode, tempfile_name) if mode
     File.rename(tempfile_name, @filename_or_io)
   end
 
